@@ -1,0 +1,5 @@
+gcc -std=gnu99 -D_XOPEN_SOURCE=600 -O3 -pthread -DMUTEX -Wall counter.c locks.c Utils/stopwatch.c -o timecount
+locks.c: In function ‘qlock’:
+locks.c:79:16: warning: initialization discards ‘volatile’ qualifier from pointer target type [enabled by default]
+  qnode *pred = __sync_lock_test_and_set(&tail,myqnode);//How to make this atomic?
+                ^
