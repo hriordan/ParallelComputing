@@ -17,9 +17,9 @@ typedef struct qnode{
 
 typedef struct lockargs {
 	int size;
-	int *myslot;
+	int mySlot;
 	qnode **mynode; 
-}
+} lockargs;
 
 extern volatile int TASlockt;
 extern volatile int EBOlock;
@@ -29,18 +29,18 @@ extern volatile int *aFlag;
 extern volatile qnode *tail;
 
 /*Declarations for Lock Types */
-void TASlock();
+void TASlock(lockargs *args);
 
-void TASunlock();
+void TASunlock(lockargs *args);
 
-void Backlock();
+void Backlock(lockargs *args);
 
-void Backunlock();
+void Backunlock(lockargs *args);
 
-void Alock(int size, int *mySlot);
+void Alock(lockargs *args);
 
-void Aunlock(int size, int mySlot);
+void Aunlock(lockargs *args);
 
-void qlock(qnode **mynode);
-
-void qunlock(qnode **mynode);
+void qlock(lockargs *args);
+	
+void qunlock(lockargs *args);

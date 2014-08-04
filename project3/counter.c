@@ -52,7 +52,9 @@ void *parallelcounter(void *args){
 	//qnode *mypred;
 	qnode *mynode;
 
+	void *lockfunc (lockargs)
 	StopWatch_t tw;
+
 
 	/*TODO: SWITCH TO FUNCTION POINTER */
 	switch(lockt){
