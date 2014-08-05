@@ -58,8 +58,65 @@ void *parallelcounter(void *args){
 
 	int privcount = 0; //thread's private counter
 	//qnode *mypred;
-	qnode *mynode;
+	//qnode *mynode;
 	
+	void (*lockfunc) (lockargs);
+	void (*unlockfunc) (lockargs);
+	lockargs *args = (lockargs *)malloc(sizeof(lockargs));
+
+
+	switch (lockt){
+		case 0:
+			lockfunc = pthread_mutex_lock;
+			unlockfunc = pthread_mutex_unlock;
+			//not too sure about the mutex one. maybe a GOTO?
+			//other stuff
+			break;
+		case 1:
+			lockfunc = TASlock
+			unlockfunc = TASunlock;
+			//other argument assn.
+			break;
+		case 2:
+			lockfunc = Backlock;
+			unlockfunc = Backunlock;
+			//other args;
+			break;
+		case 3: 
+			lockfunc = Alock;
+			unlockfunc = Aunlock
+			args->size = (args->nthreads * 8);
+			break;
+		case 4:
+			lockfunc = qlock;
+			unlockfunc = qunlock;
+			args->mynode = (qnode *)malloc(sizeof(qnode));
+			args->mynode->id = arg->tid;
+			args->mynode->mypred = NULL;
+			break;
+		default:
+			printf("Not a locktype\n");
+			pthread_exit(NULL);
+	}
+
+	StopWatch_t tw;
+
+	startTimer(&tw);
+	stopTimer(&tw);
+	while(getElapsedTime(&tw) <= t){
+		lockfunc(args)
+		count++;
+		unlockfunc(args);
+		privcount++;
+		stopTimer(&tw);
+	}
+
+	printf("Thread %d counted %d times\n",arg->tid, privcount);
+	if (lockt == 4):
+		free(args->mynode);
+	free(args);
+	pthread_exit(NULL);
+
 	StopWatch_t tw;
 	/* TO DO: REPLACE SWITCH WITH FUNCTION POINTER */
 	switch(lockt){
@@ -131,7 +188,7 @@ void *parallelcounter(void *args){
 			pthread_exit(NULL);
 			break;
 		
-	default:
+		default:
 			printf("not a lock type\n");
 			pthread_exit(NULL);
 	}

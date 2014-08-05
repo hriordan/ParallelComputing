@@ -18,7 +18,7 @@ typedef struct qnode{
 typedef struct lockargs {
 	int size;
 	int mySlot;
-	qnode **mynode; 
+	qnode *mynode; 
 } lockargs;
 
 extern volatile int TASlockt;
