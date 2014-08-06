@@ -13,6 +13,14 @@
 #define DEFAULT_NUMBER_OF_ARGS 6
 #define Q_LEN 8
 
+/*okay. so i think my basic idea shold be to have an array of each lock*/
+pthread_mutex_t *lock;
+volatile int TASlockt = 0;
+volatile int EBOlock = 0;
+volatile int aTail = 0;
+volatile int *aFlag;
+volatile qnode *tail;
+
 void serialFirewall(const int,
 					const int,
 					const long,
@@ -32,13 +40,13 @@ void serialqueue(const int,
 
 long fingerprint = 0;
 
-
 typedef struct queue {
 	volatile int head, tail;
 	volatile Packet_t *pqueue[Q_LEN];
 } queue;
 
 queue *Queue;
+
 volatile long *subprints;
 
 struct args {
@@ -73,27 +81,23 @@ void *worker(void * targs){
 	args = (struct args *) targs;
 	int source = args->source;
 	int packetsProcessed = 0;
-		//no fingerprint var for now
+
 	volatile Packet_t *temp;
 	while (packetsProcessed < args->numPackets){
+
 		if((temp = deq(source)) == NULL)
 			continue; //if nothing in queue, spin your wheels
  		subprints[source] += getFingerprint(temp->iterations, temp->seed);
+ 	
  		//fingerprint += getFingerprint(temp->iterations, temp->seed);
 		packetsProcessed++;
-		///printf("finishing? after processing %d packets\n",packetsProcessed);
 	}
-
-//	printf("thread %d completed with subprint %ld\n",source, subprints[source]);
 	pthread_exit(NULL);
-
- 
 }
 
 
 
 int main(int argc, char * argv[]) {
-
 
 	if(argc >= DEFAULT_NUMBER_OF_ARGS) {
         const int numPackets = atoi(argv[1]);
@@ -165,7 +169,7 @@ void parallelFirewall(int numPackets,
 	StopWatch_t watch; 		
 	fingerprint = 0; //this should be 'global' to the scope of the threads
 
-	//TODOHERE: malloc locks 
+
 	Queue = (queue *)malloc(sizeof(queue)*numSources); 
 	subprints = (long *)malloc(sizeof(long)*numSources);
 
@@ -184,6 +188,7 @@ void parallelFirewall(int numPackets,
 
 	if(uniformFlag){
 		startTimer(&watch);
+
 		//make dem threads
 		for (i = 0; i < numSources; i++){
 			argarray[i].numPackets = numPackets;
@@ -197,14 +202,16 @@ void parallelFirewall(int numPackets,
     		}
 //    		printf("thread %d created\n", i);
 		}
+
 		//give dem threads some work 
  		for (j = 0; j < numPackets; j++)
  			for(i = 0; i < numSources; i++){
  				volatile Packet_t * tmp = getUniformPacket(packetSource,i);
  				while((enq(tmp, i)) == NULL) //keep trying until you can slot something?
- 					;
+ 					{;}
  				//printf("enqueing to source %d on packet %d\n",i,j);
  			}
+
  		//put dem threads to bed 
  		void *status;
 		for (i=0;i<numSources;i++){
@@ -248,6 +255,7 @@ void parallelFirewall(int numPackets,
  				while((enq(tmp, i)) == NULL) //keep trying until you can slot something?
  					;
  			}
+
  		//put dem threads to bed 
  		void *status;
 		for (i=0;i<numSources;i++){

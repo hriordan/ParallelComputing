@@ -60,39 +60,44 @@ void *parallelcounter(void *args){
 	//qnode *mypred;
 	//qnode *mynode;
 	
-	void (*lockfunc) (lockargs);
-	void (*unlockfunc) (lockargs);
-	lockargs *args = (lockargs *)malloc(sizeof(lockargs));
+	void (*lockfunc) (lockargs *);
+	void (*unlockfunc) (lockargs *);
+	lockargs *lockarg = (lockargs *)malloc(sizeof(lockargs));
 
 
 	switch (lockt){
 		case 0:
-			lockfunc = pthread_mutex_lock;
-			unlockfunc = pthread_mutex_unlock;
+			lockfunc = mutexLock;
+			unlockfunc = mutexUnlock;
+			lockarg->lockpointer = &lock; 
 			//not too sure about the mutex one. maybe a GOTO?
 			//other stuff
 			break;
 		case 1:
-			lockfunc = TASlock
+			lockfunc = TASlock;
 			unlockfunc = TASunlock;
+			lockarg->lockpointer = &TASlockt ;
 			//other argument assn.
 			break;
 		case 2:
 			lockfunc = Backlock;
 			unlockfunc = Backunlock;
+			lockarg->lockpointer = &EBOlock;
 			//other args;
 			break;
 		case 3: 
 			lockfunc = Alock;
-			unlockfunc = Aunlock
-			args->size = (args->nthreads * 8);
+			unlockfunc = Aunlock;
+			lockarg->size = (arg->nthreads * 8);
+			lockarg->aTail = &aTail;
+			lockarg->aFlag = aFlag; 
 			break;
 		case 4:
 			lockfunc = qlock;
 			unlockfunc = qunlock;
-			args->mynode = (qnode *)malloc(sizeof(qnode));
-			args->mynode->id = arg->tid;
-			args->mynode->mypred = NULL;
+			lockarg->mynode = (qnode *)malloc(sizeof(qnode));
+			lockarg->mynode->id = arg->tid;
+			lockarg->mynode->mypred = NULL;
 			break;
 		default:
 			printf("Not a locktype\n");
@@ -100,25 +105,26 @@ void *parallelcounter(void *args){
 	}
 
 	StopWatch_t tw;
-
+		
 	startTimer(&tw);
 	stopTimer(&tw);
-	while(getElapsedTime(&tw) <= t){
-		lockfunc(args)
+	while(privcount < mycount){
+		lockfunc(lockarg);
 		count++;
-		unlockfunc(args);
+		unlockfunc(lockarg);
 		privcount++;
 		stopTimer(&tw);
 	}
+	
 
 	printf("Thread %d counted %d times\n",arg->tid, privcount);
-	if (lockt == 4):
-		free(args->mynode);
+	if (lockt == 4)
+		free(lockarg->mynode);
 	free(args);
 	pthread_exit(NULL);
 
-	StopWatch_t tw;
 	/* TO DO: REPLACE SWITCH WITH FUNCTION POINTER */
+	/*
 	switch(lockt){
 		case 0: //mutex
 			startTimer(&tw);
@@ -192,7 +198,7 @@ void *parallelcounter(void *args){
 			printf("not a lock type\n");
 			pthread_exit(NULL);
 	}
-			
+	*/		
 }
 
 
