@@ -50,6 +50,10 @@ void allocateLocks(lock_t locktype, int numSources){
 	}
 }
 
+void freeLocks(lock_t locktype, int numSources){
+	;
+}
+
 typedef enum {LOCKFREE, HOMEQUEUE, RANDOMQUEUE,	LASTQUEUE} strategy_t; 
 
 typedef enum {MUTEX, TAS, BACKOFF, ALOCK, QLOCK} lock_t; 
@@ -112,12 +116,23 @@ volatile Packet_t *deq(int source){
 
 /*Performs work on Queues by dequeuing things according to a set strategy */
 void *worker(void * targs){
+	
+	void (*lockfunc) (lockargs*);
+	void (*unlockfunc) (lockargs*); 
+	int packetsProcessed = 0;
 
 	struct args *args;
 	args = (struct args *) targs;
-	int source = args->source; 
-	int packetsProcessed = 0;
+	switch(args->locktype){
+		;
+	}
+	switch(args->qstrategy){
+		;
+	}
+	//int source = args->source;
 
+
+	
 	volatile Packet_t *temp;
 	while (packetsProcessed < args->numPackets){
 
@@ -175,10 +190,10 @@ void serialPacket (float numMilliseconds,
 		        fingerprint += getFingerprint(tmp->iterations, tmp->seed);
 		        packetsProcessed++;
 		        stopTimer(&watch);
-		        if (getElapsedTime(&watch) <= numMilliseconds)
+		        if (getElapsedTime(&watch) >= numMilliseconds)
 		        	goto done;
 		    }
-		    if (getElapsedTime(&watch) <= numMilliseconds)
+		    if (getElapsedTime(&watch) >= numMilliseconds)
 		        break;
 		}
 		done:
@@ -191,10 +206,10 @@ void serialPacket (float numMilliseconds,
 		        fingerprint += getFingerprint(tmp->iterations, tmp->seed);
 		        packetsProcessed++;
 		        stopTimer(&watch);
-		        if (getElapsedTime(&watch) <= numMilliseconds)
+		        if (getElapsedTime(&watch) >= numMilliseconds)
 		        	goto done;
 		    }
-		    if (getElapsedTime(&watch) <= numMilliseconds)
+		    if (getElapsedTime(&watch) >= numMilliseconds)
 		        break;
 		}
 
@@ -257,14 +272,22 @@ void parallelFirewall(float numMilliseconds,
 		}
 
 		//give dem threads some work 
- 		for (j = 0; j < numPackets; j++)
+ 		while(1){
  			for(i = 0; i < numSources; i++){
  				volatile Packet_t * tmp = getUniformPacket(packetSource,i);
  				while((enq(tmp, i)) == NULL) //keep trying until you can slot something?
  					{;}
- 				//printf("enqueing to source %d on packet %d\n",i,j);
+ 				stopTimer(&watch);
+ 				if(getElapsedTime(&watch) >= numMilliseconds){
+ 					goto done;
+ 				}
  			}
+ 			stopTimer(&watch);
+ 			if(getElapsedTime(&watch) >= numMilliseconds){
+ 				goto done;
+ 		}
 
+ 	done: 
  		//put dem threads to bed 
  		void *status;
 		for (i=0;i<numSources;i++){
@@ -282,18 +305,21 @@ void parallelFirewall(float numMilliseconds,
 		stopTimer(&watch);
 		pthread_attr_destroy(&attr);
 		printf("alternate checksumming parallel is %ld\n", fingerprint);
- 		//printf("checksum/fingerpr for parallel is %ld\n",fingerprint);
  		printf("time: %f\n",getElapsedTime(&watch));
 
 
 	}
 	else{
-		startTimer(&watch);
+			startTimer(&watch);
+
 		//make dem threads
 		for (i = 0; i < numSources; i++){
-			argarray[i].numPackets = numPackets;
+			argarray[i].numMilliseconds = numMilliseconds;
 			argarray[i].source = i;
-			argarray[i].queue = Queue;
+			argarray[i].queue = Queue; //pointer to the queue
+			argarray[i].qstrategy = strat;
+			argarray[i].locktype = lockt;
+
 
 			rc = pthread_create(&threads[i], NULL, worker, (void *) &argarray[i]);
 			if (rc) {
@@ -301,14 +327,24 @@ void parallelFirewall(float numMilliseconds,
     			exit(-1);
     		}
 		}
+
 		//give dem threads some work 
- 		for (j = 0; j < numPackets; j++)
+ 		while(1){
  			for(i = 0; i < numSources; i++){
  				volatile Packet_t * tmp = getExponentialPacket(packetSource,i);
  				while((enq(tmp, i)) == NULL) //keep trying until you can slot something?
- 					;
+ 					{;}
+ 				stopTimer(&watch);
+ 				if(getElapsedTime(&watch) >= numMilliseconds){
+ 					goto done;
+ 				}
  			}
+ 			stopTimer(&watch);
+ 			if(getElapsedTime(&watch) >= numMilliseconds){
+ 				goto done;
+ 		}
 
+ 	done: 
  		//put dem threads to bed 
  		void *status;
 		for (i=0;i<numSources;i++){
@@ -318,13 +354,20 @@ void parallelFirewall(float numMilliseconds,
 	         		exit(-1);
 	         	}
 			}
+
+		for (i = 0; i < numSources; i++){
+			//printf("queue %d has head %d and tail %d\n",i, Queue[i].head, Queue[i].tail);
+			fingerprint += subprints[i];
+		}
 		stopTimer(&watch);
 		pthread_attr_destroy(&attr);
- 		printf("checksum/fingerpr for parallel is %ld\n",fingerprint);
-	    printf("time: %f\n",getElapsedTime(&watch));
+		printf("alternate checksumming parallel is %ld\n", fingerprint);
+ 		printf("time: %f\n",getElapsedTime(&watch));
+
 
 	}
 	
+	freeLocks(lockt, int numSources);
 	free (Queue);	
 	free ((void *)subprints);
 
