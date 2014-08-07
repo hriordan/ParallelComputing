@@ -88,7 +88,7 @@ void *parallelcounter(void *args){
 		case 3: 
 			lockfunc = Alock;
 			unlockfunc = Aunlock;
-			lockarg->size = (arg->nthreads * 8);
+			lockarg->size = (arg->nthreads * 8); //8??
 			lockarg->aTail = &aTail;
 			lockarg->aFlag = aFlag; 
 			break;

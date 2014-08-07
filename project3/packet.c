@@ -15,11 +15,44 @@
 
 /*okay. so i think my basic idea shold be to have an array of each lock*/
 pthread_mutex_t *lock;
-volatile int TASlockt = 0;
-volatile int EBOlock = 0;
-volatile int aTail = 0;
-volatile int *aFlag;
-volatile qnode *tail;
+volatile int *TASlockt;
+volatile int *EBOlock;
+volatile int *aTail;
+volatile int **aFlag;
+volatile qnode **tail;
+
+void allocateLocks(lock_t locktype, int numSources){
+	int i;
+	if (locktype == MUTEX){
+		lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t) * numSources);
+		for(i = 0; i < numSources; i++)
+			pthread_mutex_init(&lock[i], NULL); //init all locks
+	}
+	else if(locktype == TAS)
+		TASlockt = (int *)malloc(sizeof(int) * numSources);
+	else if(locktype == BACKOFF)
+		EBOlock = (int *)malloc(sizeof(int) * nuSources);
+	else if(locktype == ALOCK){
+		aFlag =(int **)malloc(sizeof(int*)*numSources);
+		for (i = 0; i < numSources; i++)
+			aFlag[i] = (int *)malloc(sizeof(int)*numSources*4);
+			aFlag[i][0] = 1;
+	}
+	/*Note: a little unsure atm how much gets malloced. definitely the tail*/
+	else if (locktype == QLOCK){
+		tail = (qnode**)malloc(sizeof(qnode *) * numSources);
+		for(i = 0; i < numSources; i++){
+			tail = (qnode *)malloc(sizeof(qnode));
+			tail->locked = 0;
+			tail->id = 99999;
+			tail->mypred = NULL;
+		}
+	}
+}
+
+typedef enum {LOCKFREE, HOMEQUEUE, RANDOMQUEUE,	LASTQUEUE} strategy_t; 
+
+typedef enum {MUTEX, TAS, BACKOFF, ALOCK, QLOCK} lock_t; 
 
 void serialFirewall(const int,
 					const int,
@@ -40,19 +73,22 @@ void serialqueue(const int,
 
 long fingerprint = 0;
 
-typedef struct queue {
-	volatile int head, tail;
-	volatile Packet_t *pqueue[Q_LEN];
-} queue;
-
 queue *Queue;
 
 volatile long *subprints;
 
+typedef struct queue {
+	volatile int head, tail;
+	volatile Packet_t *pqueue[Q_LEN];
+
+} queue;
+
 struct args {
 	int numPackets;
+	float numMilliseconds;
 	int source; 
-	//long &fingerprint; // or make it fucking global
+	strategy_t qstrategy; 
+	lock_t locktype; 
 	queue *queue; 
 };
 
@@ -67,7 +103,6 @@ void * enq(volatile Packet_t *packet, int source){
 
 volatile Packet_t *deq(int source){
 	if((Queue[source].tail - Queue[source].head) == 0){
-		//printf("empty fucking queue\n");
 		return NULL;
 	}
 	volatile Packet_t *x = Queue[source].pqueue[Queue[source].head % Q_LEN];
@@ -75,11 +110,12 @@ volatile Packet_t *deq(int source){
 	return x;
 }
 
+/*Performs work on Queues by dequeuing things according to a set strategy */
 void *worker(void * targs){
 
 	struct args *args;
 	args = (struct args *) targs;
-	int source = args->source;
+	int source = args->source; 
 	int packetsProcessed = 0;
 
 	volatile Packet_t *temp;
@@ -97,10 +133,11 @@ void *worker(void * targs){
 
 
 
+
 int main(int argc, char * argv[]) {
 
 	if(argc >= DEFAULT_NUMBER_OF_ARGS) {
-        const int numPackets = atoi(argv[1]);
+        const float numMilliseconds = atoi(argv[1]);
 		const int numSources = atoi(argv[2]);
 		const long mean = atol(argv[3]);
 		const int uniformFlag = atoi(argv[4]);
@@ -110,65 +147,79 @@ int main(int argc, char * argv[]) {
 		const int strat = atoi(argv[8]);
 
 		if(type == 0)
-        	serialFirewall(numPackets,numSources,mean,uniformFlag,experimentNumber);
+        	serialPacket(numMilliseconds,numSources,mean,uniformFlag,experimentNumber);
         else if(type == 1)
-        	parallelFirewall(numPackets,numSources,mean,uniformFlag,experimentNumber,lockt,strat);
-        else
-        	serialqueue(numPackets,numSources,mean,uniformFlag,experimentNumber);
+        	parallelPacket(numMilliseconds,numSources,mean,uniformFlag,experimentNumber,lockt,strat);
+
 
 	}
     return 0;
 }
 
-void serialFirewall (int numPackets,
+void serialPacket (float numMilliseconds,
 					 int numSources,
 					 long mean,
 					 int uniformFlag,
 					 short experimentNumber)
 {
-	 PacketSource_t * packetSource = createPacketSource(mean, numSources, experimentNumber);
-	 StopWatch_t watch;
-	 fingerprint = 0;
+	PacketSource_t * packetSource = createPacketSource(mean, numSources, experimentNumber);
+	StopWatch_t watch;
+	fingerprint = 0;
+	int packetsProcessed = 0;
 
-	 if( uniformFlag) {
-	     startTimer(&watch);
-	      for( int i = 0; i < numSources; i++ ) {
-	        for( int j = 0; j < numPackets; j++ ) {
-	          volatile Packet_t * tmp = getUniformPacket(packetSource,i);
-	          fingerprint += getFingerprint(tmp->iterations, tmp->seed);
-	        }
-	      }
-	      stopTimer(&watch);
-	    
-}	    else {
-	      startTimer(&watch);
-	      for( int i = 0; i < numSources; i++ ) {
-	        for( int j = 0; j < numPackets; j++ ) {
-	          volatile Packet_t * tmp = getExponentialPacket(packetSource,i);
-	          fingerprint += getFingerprint(tmp->iterations, tmp->seed);
-	        }
-	      }
-	      stopTimer(&watch);
-	    }
+	if( uniformFlag) {
+	   	startTimer(&watch);
+	   	while (1){
+		    for( int i = 0; i < numSources; i++ ) {
+		        volatile Packet_t * tmp = getUniformPacket(packetSource,i);
+		        fingerprint += getFingerprint(tmp->iterations, tmp->seed);
+		        packetsProcessed++;
+		        stopTimer(&watch);
+		        if (getElapsedTime(&watch) <= numMilliseconds)
+		        	goto done;
+		    }
+		    if (getElapsedTime(&watch) <= numMilliseconds)
+		        break;
+		}
+		done:
+	    stopTimer(&watch);
+	}	 
+	else {
+	    while (1){
+		    for( int i = 0; i < numSources; i++ ) {
+		        volatile Packet_t * tmp = getExponentialPacket(packetSource,i);
+		        fingerprint += getFingerprint(tmp->iterations, tmp->seed);
+		        packetsProcessed++;
+		        stopTimer(&watch);
+		        if (getElapsedTime(&watch) <= numMilliseconds)
+		        	goto done;
+		    }
+		    if (getElapsedTime(&watch) <= numMilliseconds)
+		        break;
+		}
+
+		done:
+	    stopTimer(&watch);
+	}
 	    printf("checksum/fingerpr for serial is %ld\n",fingerprint);
+	    printf("Serial counted %d packets\n",packetsProcessed);
 	    printf("time: %f\n",getElapsedTime(&watch));
 }
 
 
-void parallelFirewall(int numPackets,
+void parallelFirewall(float numMilliseconds,
 					 int numSources,
 					 long mean,
 					 int uniformFlag,
 					 short experimentNumber, int lockt, int strat){
 
-
-
 	int i, j, rc;
 
 	PacketSource_t * packetSource = createPacketSource(mean, numSources, experimentNumber);
 	StopWatch_t watch; 		
-	fingerprint = 0; //this should be 'global' to the scope of the threads
+	//fingerprint = 0; //this should be 'global' to the scope of the threads
 
+	allocateLocks(lock_t lock, int numSources);
 
 	Queue = (queue *)malloc(sizeof(queue)*numSources); 
 	subprints = (long *)malloc(sizeof(long)*numSources);
@@ -191,16 +242,18 @@ void parallelFirewall(int numPackets,
 
 		//make dem threads
 		for (i = 0; i < numSources; i++){
-			argarray[i].numPackets = numPackets;
+			argarray[i].numMilliseconds = numMilliseconds;
 			argarray[i].source = i;
-			argarray[i].queue = Queue;
+			argarray[i].queue = Queue; //pointer to the queue
+			argarray[i].qstrategy = strat;
+			argarray[i].locktype = lockt;
+
 
 			rc = pthread_create(&threads[i], NULL, worker, (void *) &argarray[i]);
 			if (rc) {
     			printf("ERROR; return code from pthread_create() is %d\n", rc);
     			exit(-1);
     		}
-//    		printf("thread %d created\n", i);
 		}
 
 		//give dem threads some work 

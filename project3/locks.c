@@ -3,6 +3,7 @@
 #include "locks.h"
 #define _GNU_SOURCE
 
+/*Trylock note: should tryLocks initially just examine lock, then call lock?
 
 void mutexLock(lockargs *args){
 	pthread_mutex_lock(args->lockpointer);
@@ -21,7 +22,7 @@ void TASlock(lockargs *args){
 
 int tryTASlock(lockargs *args){
 	int * lockpointer = args->lockpointer; 
-	if(__sync_fetch_and_or(lockpointer, 1) == 0)
+	if(__sync_fetch_and_or(lockpointer, 1) == 0) 
 		return 1; //acquired
 	else
 		return 0; //failed	

@@ -27,7 +27,7 @@ typedef struct targs{
 }targs; 
 
 void serialcounter(int time){
-	float convTime = time/1000; //convert msecs to secs 
+	float convTime = time/1000; //convert secs to msecs  
 	printf("convTime is %f\n",convTime);
 	StopWatch_t tw;
 
@@ -84,7 +84,7 @@ void *parallelcounter(void *args){
 		case 3: 
 			lockfunc = Alock;
 			unlockfunc = Aunlock;
-			lockarg->size = (arg->nthreads * 8);
+			lockarg->size = (arg->nthreads * 8); //8??
 			lockarg->aTail = &aTail;
 			lockarg->aFlag = aFlag; 
 			break;
@@ -119,7 +119,7 @@ void *parallelcounter(void *args){
 	pthread_exit(NULL);
 
 	
-	/*TODO: SWITCH TO FUNCTION POINTER */
+	
 	/*
 	switch(lockt){
 		case 0: //mutex
@@ -259,12 +259,12 @@ int main(int argc, char **argv){
 		pthread_t threads[nthreads];
 		targs args[nthreads];
 
+		float secs = msecs/1000;
+
 		if(lockt == 3){
 			aFlag =(int *)malloc(sizeof(int)*nthreads*4); // why *4?
 			aFlag[0] = 1;
 		}
-
-		float secs = msecs/1000;
 		
 		if (lockt == 0)
 			pthread_mutex_init(&lock, NULL);
@@ -276,6 +276,7 @@ int main(int argc, char **argv){
 
 			args[i].lockt = lockt;
 			args[i].secs = secs;
+
 			if(lockt==3){
 				args[i].asize = nthreads;
 				args[i].nthreads = nthreads;
