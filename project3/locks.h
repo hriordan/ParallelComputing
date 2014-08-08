@@ -23,15 +23,17 @@ typedef struct lockargs {
 	int size;
 	int mySlot;
 	qnode *mynode; 
+	qnode *qtail;
 } lockargs;
 
+/*
 extern volatile int TASlockt;
 extern volatile int EBOlock;
 extern volatile int count;
 extern volatile int aTail;
 extern volatile int *aFlag;
 extern volatile qnode *tail;
-
+*/
 /*Declarations for Lock Types */
 void mutexLock(lockargs *args);
 

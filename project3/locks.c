@@ -3,7 +3,7 @@
 #include "locks.h"
 #define _GNU_SOURCE
 
-/*Trylock note: should tryLocks initially just examine lock, then call lock?
+/*Trylock note: should tryLocks initially just examine lock, then call lock? */
 
 void mutexLock(lockargs *args){
 	pthread_mutex_lock(args->lockpointer);
@@ -125,7 +125,7 @@ void Aunlock(lockargs *args){
 /*CLH lock */
 
 void qlock(lockargs *args){
-
+	qnode *tail = args->qtail;
 	qnode **mynode = &(args->mynode);
 
     (*mynode)->locked = 1;
@@ -139,7 +139,7 @@ void qlock(lockargs *args){
 }
 
 int tryqlock(lockargs *args){
-
+	qnode *tail = args->qtail;
 	qnode **mynode = &(args->mynode);
 
     (*mynode)->locked = 1;

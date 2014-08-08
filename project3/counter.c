@@ -91,9 +91,11 @@ void *parallelcounter(void *args){
 		case 4:
 			lockfunc = qlock;
 			unlockfunc = qunlock;
+			
 			lockarg->mynode = (qnode *)malloc(sizeof(qnode));
 			lockarg->mynode->id = arg->tid;
 			lockarg->mynode->mypred = NULL;
+			lockarg->qtail = tail;
 			break;
 		default:
 			printf("Not a locktype\n");

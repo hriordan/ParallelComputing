@@ -13,7 +13,7 @@
 #define DEFAULT_NUMBER_OF_ARGS 6
 #define Q_LEN 8
 
-/*okay. so i think my basic idea shold be to have an array of each lock*/
+
 pthread_mutex_t *lock;
 volatile int *TASlockt;
 volatile int *EBOlock;
@@ -21,9 +21,17 @@ volatile int *aTail;
 volatile int **aFlag;
 volatile qnode **tail;
 
+
+
+typedef enum {LOCKFREE, HOMEQUEUE, RANDOMQUEUE,	LASTQUEUE} strategy_t; 
+
+typedef enum {MUTEX, TAS, BACKOFF, ALOCK, QLOCK} lock_t;
+
+
 void allocateLocks(lock_t locktype, int numSources){
 	int i;
-	if (locktype == MUTEX){
+	if (locktype == MUTEX)
+	{
 		lock = (pthread_mutex_t *)malloc(sizeof(pthread_mutex_t) * numSources);
 		for(i = 0; i < numSources; i++)
 			pthread_mutex_init(&lock[i], NULL); //init all locks
@@ -32,20 +40,22 @@ void allocateLocks(lock_t locktype, int numSources){
 		TASlockt = (int *)malloc(sizeof(int) * numSources);
 	else if(locktype == BACKOFF)
 		EBOlock = (int *)malloc(sizeof(int) * nuSources);
-	else if(locktype == ALOCK){
+	else if(locktype == ALOCK)
+	{
 		aFlag =(int **)malloc(sizeof(int*)*numSources);
 		for (i = 0; i < numSources; i++)
 			aFlag[i] = (int *)malloc(sizeof(int)*numSources*4);
 			aFlag[i][0] = 1;
 	}
 	/*Note: a little unsure atm how much gets malloced. definitely the tail*/
-	else if (locktype == QLOCK){
+	else if (locktype == QLOCK)
+	{
 		tail = (qnode**)malloc(sizeof(qnode *) * numSources);
 		for(i = 0; i < numSources; i++){
-			tail = (qnode *)malloc(sizeof(qnode));
-			tail->locked = 0;
-			tail->id = 99999;
-			tail->mypred = NULL;
+			tail[i] = (qnode *)malloc(sizeof(qnode));
+			tail[i]->locked = 0;
+			tail[i]->id = 99999;
+			tail[i]->mypred = NULL;
 		}
 	}
 }
@@ -54,9 +64,38 @@ void freeLocks(lock_t locktype, int numSources){
 	;
 }
 
-typedef enum {LOCKFREE, HOMEQUEUE, RANDOMQUEUE,	LASTQUEUE} strategy_t; 
+ 
+void _assignLockPointers(lockargs *lockarg, 
+				int source, 
+				lock_t locktyp, qnode **nodelist){
 
-typedef enum {MUTEX, TAS, BACKOFF, ALOCK, QLOCK} lock_t; 
+	switch(locktype){
+		case MUTEX:
+			lockarg->lockpointer = &lock[source];
+			break;
+		case TAS:
+			lockarg->lockpointer = &TASlockt[source];
+			break;
+		case BACKOFF:
+			lockarg->lockpointer = &EBOlock[source];
+			break;
+		case ALOCK:
+			lockarg->aTail = &aTail[source];
+			lockarg->aFlag = aFlag[source];
+			break;
+		case QLOCK:
+			lockarg->mynode = nodelist[source];
+			lockarg->qtail = tail[source];
+			break;
+		default:
+			break; 
+	}
+	
+}
+
+int _pickRandSource(int numSources){
+	return rand() % numSources;
+}
 
 void serialFirewall(const int,
 					const int,
@@ -88,6 +127,7 @@ typedef struct queue {
 } queue;
 
 struct args {
+	int numSources;
 	int numPackets;
 	float numMilliseconds;
 	int source; 
@@ -122,38 +162,41 @@ void *worker(void * targs){
 	
 	void (*lockfunc) (lockargs*);
 	void (*unlockfunc) (lockargs*);
-	lockargs *lockarg = (lockargs *)malloc(sizeof(lockargs));; 
+	void (*trylockfunc) (lockargs*);
+	lockargs *lockarg = (lockargs *)malloc(sizeof(lockargs));
+	qnode **mynodelist; 
 	int packetsProcessed = 0;
 	volatile Packet_t *temp;
 
-	struct args *args;
-	args = (struct args *) targs;
 	
-	switch(args->locktype){
+	
+	switch(wargs->locktype){
 		case MUTEX:
 			lockfunc = mutexLock;
 			unlockfunc = mutexUnlock;
-			
+			//this lock cant be tried.
 			//not too sure about the mutex one. maybe a GOTO?
 			//other stuff
 			break;
 		case 1:
 			lockfunc = TASlock;
 			unlockfunc = TASunlock;
+			trylockfunc = tryTASlock;
 			//lockarg->lockpointer = &TASlockt ;
 			//other argument assn.
 			break;
 		case 2:
 			lockfunc = Backlock;
 			unlockfunc = Backunlock;
-			lockarg->lockpointer = &EBOlock;
+			trylockfunc = tryBacklock;
 			//other args;
 			break;
 		case 3: 
 			lockfunc = Alock;
 			unlockfunc = Aunlock;
+			trylockfunc = tryAlock;
+			lockarg->size = (wargs->numSources * 8); //8??
 			/*
-			lockarg->size = (arg->nthreads * 8); //8??
 			lockarg->aTail = &aTail;
 			lockarg->aFlag = aFlag; 
 			*/
@@ -161,10 +204,13 @@ void *worker(void * targs){
 		case 4:
 			lockfunc = qlock;
 			unlockfunc = qunlock;
-
-			lockarg->mynode = (qnode *)malloc(sizeof(qnode));
-			lockarg->mynode->id = arg->tid;
-			lockarg->mynode->mypred = NULL;
+			trylockfunc = tryqlock;
+			//lol wtf am i mallocing.jpg
+			mynodelist = (qnode**)malloc(sizeof(qnode *) * numSources);
+			for (int i = 0; i < numSources; i++){
+				mynodelist[i] = (qnode *)malloc(sizeof(qnode));
+				mynodelist[i]->mypred = NULL;
+			}
 			break;
 		default:
 			printf("Not a locktype\n");
@@ -173,15 +219,15 @@ void *worker(void * targs){
 
 	
 
-	switch(args->qstrategy){
+	switch(wargs->qstrategy){
 		case LOCKFREE:
 			startTimer(&watch);
 
 			while (getElapsedTime(&watch) <= wargs->numMilliseconds){
 
 				source = wargs->source;
-				lockargs->lockpointer = _assignLockPointer(source, args->locktype);	 
-				//lockfunc(/*pointer*/);
+				//_assignLockPointers(lockarg, source, args->locktype);	 
+
 				if((temp = deq(source)) == NULL){
 					stopTimer(&watch);
 					if (getElapsedTime(&watch) >= wargs->numMilliseconds)
@@ -195,37 +241,112 @@ void *worker(void * targs){
 				stopTimer(&watch);
 			}
 			break;
+		
 		case HOMEQUEUE:
-			;
+		startTimer(&watch);
+
+			while (getElapsedTime(&watch) <= wargs->numMilliseconds){
+
+				source = wargs->source;
+				_assignLockPointers(lockarg, source, args->locktype, mynodelist);	 
+				/*Return and consider how the locking ordering should go. */
+				lockfunc(lockarg);			
+				if((temp = deq(source)) == NULL){
+					stopTimer(&watch);
+					if (getElapsedTime(&watch) >= wargs->numMilliseconds){
+						unlockfunc(lockarg); /*We conclude the action */
+						break;
+					}
+					else{
+						unlockfunc(lockarg);
+						continue;
+					}
+				}
+
+				unlockfunc(lockarg);
+
+		 		subprints[source] += getFingerprint(temp->iterations, temp->seed);
+		 		//fingerprint += getFingerprint(temp->iterations, temp->seed);
+				packetsProcessed++;
+				stopTimer(&watch);
+			}
 			break;
+
 		case RANDOMQUEUE:
-			;
-			break;
-		case LASTQUEUE:
-			;
-			break;
-		default:
-			;
-			break;
+			startTimer(&watch);
 
-	}
-	pthread_exit(NULL);
-	//int source = args->source;
-
-
-	/*
+			while (getElapsedTime(&watch) <= wargs->numMilliseconds){
 	
-	while (packetsProcessed < args->numPackets){
+				source = _pickRandSource(wargs->numSources);
+				_assignLockPointers(lockarg, source, args->locktype, mynodelist);
 
-		if((temp = deq(source)) == NULL)
-			continue; //if nothing in queue, spin your wheels
- 		subprints[source] += getFingerprint(temp->iterations, temp->seed);
- 	
- 		//fingerprint += getFingerprint(temp->iterations, temp->seed);
-		packetsProcessed++;
+				lockfunc(lockarg);
+				if((temp=deq(source)) == NULL){
+					stopTimer(&watch);
+					if (getElapsedTime(&watch) >= wargs->numMilliseconds){
+						unlockfunc(lockarg); /*We conclude the action */
+						break;
+					}
+					else{
+						unlockfunc(lockarg);
+						continue;
+					}
+				}
+				unlockfunc(lockarg);
+
+		 		subprints[source] += getFingerprint(temp->iterations, temp->seed);
+		 		//fingerprint += getFingerprint(temp->iterations, temp->seed);
+				packetsProcessed++;
+				stopTimer(&watch);
+			}
+			break;
+	
+		case LASTQUEUE:
+			startTimer(&watch);
+			while (getElapsedTime(&watch) <= wargs->numMilliseconds){
+				/*Find open source */
+				while(1){
+					source = _pickRandSource(wargs->numSources);
+					_assignLockPointers(lockarg, source, wargs->locktype,mynodelist);
+
+					if(trylockfunc(lockarg) == 0){ //lock failed
+						continue;
+					}
+					else{  //lock succesful. go for it
+						break;
+					}
+
+				}
+				/*dequeue from found source */
+
+				lockfunc(lockarg);
+				while(temp = deq(source) != NULL){
+					subprints[source] += getFingerprint(temp->iterations, temp->seed);
+ 					//fingerprint += getFingerprint(temp->iterations, temp->seed);
+					packetsProcessed++;
+					stopTimer(&watch);
+					/*check if times up here? */
+				}
+				unlockfunc(lockarg);
+				stopTimer(&watch)	
+			}
+			break;
+		
+		default:
+			printf("not a valid strategy\n");
+			break;
+
 	}
+
+	free(lockarg);
+	if(wargs->locktype == QLOCK){
+		for (int i = 0; i < numSources; i++)
+			free(mynodelist[i]);
+		free(mynodelist);
+	}
+
 	pthread_exit(NULL);
-	*/
+	
 }
 
 
@@ -344,6 +465,7 @@ void parallelFirewall(float numMilliseconds,
 			argarray[i].queue = Queue; //pointer to the queue
 			argarray[i].qstrategy = strat;
 			argarray[i].locktype = lockt;
+			argarray[i].numSources = numSources;
 
 
 			rc = pthread_create(&threads[i], NULL, worker, (void *) &argarray[i]);
