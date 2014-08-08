@@ -114,26 +114,107 @@ volatile Packet_t *deq(int source){
 	return x;
 }
 
+
 /*Performs work on Queues by dequeuing things according to a set strategy */
 void *worker(void * targs){
+
+	struct args *wargs = (struct args *) targs;
 	
 	void (*lockfunc) (lockargs*);
-	void (*unlockfunc) (lockargs*); 
+	void (*unlockfunc) (lockargs*);
+	lockargs *lockarg = (lockargs *)malloc(sizeof(lockargs));; 
 	int packetsProcessed = 0;
+	volatile Packet_t *temp;
 
 	struct args *args;
 	args = (struct args *) targs;
+	
 	switch(args->locktype){
-		;
+		case MUTEX:
+			lockfunc = mutexLock;
+			unlockfunc = mutexUnlock;
+			
+			//not too sure about the mutex one. maybe a GOTO?
+			//other stuff
+			break;
+		case 1:
+			lockfunc = TASlock;
+			unlockfunc = TASunlock;
+			//lockarg->lockpointer = &TASlockt ;
+			//other argument assn.
+			break;
+		case 2:
+			lockfunc = Backlock;
+			unlockfunc = Backunlock;
+			lockarg->lockpointer = &EBOlock;
+			//other args;
+			break;
+		case 3: 
+			lockfunc = Alock;
+			unlockfunc = Aunlock;
+			/*
+			lockarg->size = (arg->nthreads * 8); //8??
+			lockarg->aTail = &aTail;
+			lockarg->aFlag = aFlag; 
+			*/
+			break;
+		case 4:
+			lockfunc = qlock;
+			unlockfunc = qunlock;
+
+			lockarg->mynode = (qnode *)malloc(sizeof(qnode));
+			lockarg->mynode->id = arg->tid;
+			lockarg->mynode->mypred = NULL;
+			break;
+		default:
+			printf("Not a locktype\n");
+			pthread_exit(NULL);
 	}
+
+	
+
 	switch(args->qstrategy){
-		;
+		case LOCKFREE:
+			startTimer(&watch);
+
+			while (getElapsedTime(&watch) <= wargs->numMilliseconds){
+
+				source = wargs->source;
+				lockargs->lockpointer = _assignLockPointer(source, args->locktype);	 
+				//lockfunc(/*pointer*/);
+				if((temp = deq(source)) == NULL){
+					stopTimer(&watch);
+					if (getElapsedTime(&watch) >= wargs->numMilliseconds)
+						break;
+					continue; //if nothing in queue, spin your wheels
+				}
+		 		subprints[source] += getFingerprint(temp->iterations, temp->seed);
+		 	
+		 		//fingerprint += getFingerprint(temp->iterations, temp->seed);
+				packetsProcessed++;
+				stopTimer(&watch);
+			}
+			break;
+		case HOMEQUEUE:
+			;
+			break;
+		case RANDOMQUEUE:
+			;
+			break;
+		case LASTQUEUE:
+			;
+			break;
+		default:
+			;
+			break;
+
 	}
+	pthread_exit(NULL);
 	//int source = args->source;
 
 
+	/*
 	
-	volatile Packet_t *temp;
 	while (packetsProcessed < args->numPackets){
 
 		if((temp = deq(source)) == NULL)
@@ -144,6 +225,7 @@ void *worker(void * targs){
 		packetsProcessed++;
 	}
 	pthread_exit(NULL);
+	*/
 }
 
 
