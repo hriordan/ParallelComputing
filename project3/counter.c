@@ -27,7 +27,7 @@ typedef struct targs{
 }targs; 
 
 void serialcounter(int time){
-	float convTime = time/1000; //convert secs to msecs  
+	float convTime = ((float)time)/1000.00; //convert secs to msecs  
 	printf("convTime is %f\n",convTime);
 	StopWatch_t tw;
 
@@ -45,16 +45,8 @@ void *parallelcounter(void *args){
 	targs *arg = (targs *) args; 
 	int lockt = arg->lockt;
 	float t = arg->secs;
-	/*
-	int size;
-	int mySlot;
-	int nthreads;
-	int padsize;
-	*/
 	int privcount = 0; //thread's private counter
 	
-	//qnode *mypred;
-	//qnode *mynode;
 
 	void (*lockfunc) (lockargs*);
 	void (*unlockfunc) (lockargs*);
@@ -66,7 +58,6 @@ void *parallelcounter(void *args){
 			lockfunc = mutexLock;
 			unlockfunc = mutexUnlock;
 			lockarg->lockpointer = &lock; 
-			//not too sure about the mutex one. maybe a GOTO?
 			//other stuff
 			break;
 		case 1:
@@ -115,10 +106,14 @@ void *parallelcounter(void *args){
 	}
 
 	printf("Thread %d counted %d times\n",arg->tid, privcount);
+	//How the fuck do I avoid early freeing pointers while other threads are still using them?
+	sleep(1);
+
 	if (lockt == 4)
 		free(lockarg->mynode);
 	free(lockarg);
-	pthread_exit(NULL);
+	
+	pthread_exit((void *)privcount);
 
 	
 	
@@ -261,10 +256,11 @@ int main(int argc, char **argv){
 		pthread_t threads[nthreads];
 		targs args[nthreads];
 
-		float secs = msecs/1000;
-
+		float secs = ((float)msecs)/1000.0;
+		printf("parallel convtime is %f\n",secs);
+		
 		if(lockt == 3){
-			aFlag =(int *)malloc(sizeof(int)*nthreads*4); // why *4?
+			aFlag =(int *)malloc(sizeof(int)*nthreads*8); // why *4?
 			aFlag[0] = 1;
 		}
 		
@@ -300,16 +296,18 @@ int main(int argc, char **argv){
 			}
 		}
 		pthread_attr_destroy(&attr);
+		int sumprivcounts = 0;
 		for (i=0; i<nthreads; i++){
 			rc = pthread_join(threads[i], &status);
+			sumprivcounts += (int) status;
 		  	if (rc) {
 		    printf("ERROR; return code from pthread_join() is %d\n", rc);
 		    exit(-1);
-		  	}
+		  	}	
 			printf("thread %d joined\n",i);
 		}
 		printf("Parallel - counted to %d in %d msecs\n",count,msecs);
-
+		printf("sum of private thread counts is %d\n",sumprivcounts);
 		if(lockt == 3)
 				free((void*)aFlag);
 		if(lockt == 4)

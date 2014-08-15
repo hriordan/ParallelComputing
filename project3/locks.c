@@ -6,22 +6,22 @@
 /*Trylock note: should tryLocks initially just examine lock, then call lock? */
 
 void mutexLock(lockargs *args){
-	pthread_mutex_lock(args->lockpointer);
+	pthread_mutex_lock((pthread_mutex_t *)args->lockpointer);
 }
 
 
 void mutexUnlock(lockargs *args){
-	pthread_mutex_unlock(args->lockpointer);
+	pthread_mutex_unlock((pthread_mutex_t *)args->lockpointer);
 }
 
 /* TAS lock */
 void TASlock(lockargs *args){
-	int * lockpointer = args->lockpointer; 
+	volatile int * lockpointer = args->lockpointer; 
 	while (__sync_fetch_and_or(lockpointer, 1)){} //"getAndSet(true)"
 }
 
 int tryTASlock(lockargs *args){
-	int * lockpointer = args->lockpointer; 
+	volatile int * lockpointer = args->lockpointer; 
 	if(__sync_fetch_and_or(lockpointer, 1) == 0) 
 		return 1; //acquired
 	else
@@ -30,14 +30,14 @@ int tryTASlock(lockargs *args){
 
 void TASunlock(lockargs *args){
 	//TASstate = 0;
-	int * lockpointer = args->lockpointer; 
+	volatile int * lockpointer = args->lockpointer; 
 	__sync_and_and_fetch(lockpointer, 0); // "set(false)"
 }
 
 /*Exponential Backoff Lock */
 
 void Backlock(lockargs *args){
-	int * lockpointer = args->lockpointer; 
+	volatile int * lockpointer = args->lockpointer; 
 
 	struct timespec tim;
 	tim.tv_sec = 0;
@@ -61,7 +61,7 @@ void Backlock(lockargs *args){
 }
 
 int tryBacklock(lockargs *args){
-	int * lockpointer = args->lockpointer; 
+	volatile int * lockpointer = args->lockpointer; 
 
 	struct timespec tim;
 	tim.tv_sec = 0;
@@ -85,15 +85,17 @@ int tryBacklock(lockargs *args){
 }
 
 void Backunlock(lockargs *args){
-	EBOlock = 0; 
+	volatile int * lockpointer = args->lockpointer;
+	*lockpointer = 0; //atomic zeroing needed? 
+	 
 }
 
 
 /*Anderson's Array Lock */
 
 void Alock(lockargs *args){
-	int *aTail = args->aTail; 	//This is a pointer.
-	int *aFlag = args->aFlag;  	
+	volatile int *aTail = args->aTail; 	//This is a pointer.
+	volatile int *aFlag = args->aFlag;  	
     int size = args->size;
     int slot = ((__sync_fetch_and_add(aTail,8))) % size;
 	(args->mySlot) = slot; 
@@ -101,8 +103,8 @@ void Alock(lockargs *args){
  }
 
  int tryAlock(lockargs *args){
-	int *aTail = args->aTail; 	//This is a pointer.
-	int *aFlag = args->aFlag;  	
+	volatile int *aTail = args->aTail; 	//This is a pointer.
+	volatile int *aFlag = args->aFlag;  	
     int size = args->size;
     int slot = ((__sync_fetch_and_add(aTail,8))) % size;
 	(args->mySlot) = slot; 
@@ -114,7 +116,7 @@ void Alock(lockargs *args){
  }
 
 void Aunlock(lockargs *args){
-	int *aFlag = args->aFlag;
+	volatile int *aFlag = args->aFlag;
 	int size = args->size;
 	int slot = (args->mySlot); //Must doublecheck if this is being remembered
 	aFlag[slot] = 0;
@@ -123,23 +125,24 @@ void Aunlock(lockargs *args){
 
 
 /*CLH lock */
-
+//STICK INCORRECT.
 void qlock(lockargs *args){
-	qnode *tail = args->qtail;
+	volatile qnode **tail = &(args->qtail);
 	qnode **mynode = &(args->mynode);
 
     (*mynode)->locked = 1;
-	
-	volatile qnode *pred = __sync_lock_test_and_set(&tail,*mynode);
- 	
+	//printf("mynode id is %d\n", (*mynode)->id);	
+	//printf("tail id before is %d\n", (*tail)->id);
+	volatile qnode *pred = __sync_lock_test_and_set(tail,*mynode);
+ 	//printf("tail id is now %d\n", (*tail)->id);	
 	(*mynode)->mypred = pred;
-
+	//printf("pred id is %d\n", pred->id);		
    	while (pred->locked){;} 
-
+	//printf("got here 4\n");	
 }
 
 int tryqlock(lockargs *args){
-	qnode *tail = args->qtail;
+	volatile qnode *tail = args->qtail;
 	qnode **mynode = &(args->mynode);
 
     (*mynode)->locked = 1;
@@ -156,14 +159,16 @@ int tryqlock(lockargs *args){
 }
 
 void qunlock(lockargs *args){
-	
-	qnode **mynode = &(args->mynode);
-    
-    qnode *pred = (*mynode)->mypred;
-	//printf("finishing qunlock. tail has lock %d and id %d\n",tail->locked,tail->id); 
+	volatile qnode *tail = args->qtail;
+	//printf("starting qunlock. tail has lock %d and id %d\n",tail->locked,tail->id); 
+	qnode **mynode = &(args->mynode); //TBD: need volatile? gives incompat warning
+    qnode *pred = ((*mynode)->mypred);
+    //printf("qunlock 1. pred has id %d and mynode has id %d\n",pred->id, (*mynode)->id); 
 	(*mynode)->locked = 0;
+	(*mynode) = pred;
+	//printf("mynode id is %d\n", (*mynode)->id);
 	//printf("finishing qunlock. tail has lock %d and id %d\n",tail->locked,tail->id); 
-	*mynode = pred; 
+	//printf("qunlock 2. pred has id %d and mynode has id %d\n",pred->id,(*mynode)->id);
 	//printf("finishing qunlock. tail has lock %d and id %d\n",tail->locked,tail->id); 
 }
 

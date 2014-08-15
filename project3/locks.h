@@ -13,17 +13,18 @@
 typedef struct qnode{
 	int locked; //volatile?
   	int id;
-  	struct qnode *mypred;
+  	volatile struct qnode *mypred;
 } qnode;
 
 typedef struct lockargs {
-	void *lockpointer; 
-	int *aFlag;
-	int *aTail;
+	volatile void *lockpointer; 
+	volatile int *aFlag;
+	volatile int *aTail;
 	int size;
 	int mySlot;
-	qnode *mynode; 
-	qnode *qtail;
+	qnode *mynode;
+	qnode *pred; 
+	volatile qnode *qtail;
 } lockargs;
 
 /*
