@@ -98,29 +98,28 @@ void *parallelcounter(void *args){
 			lockarg->mynode = (qnode *)malloc(sizeof(qnode));
 			lockarg->mynode->id = arg->tid;
 			lockarg->mynode->mypred = NULL;
+			lockarg->qtail = tail;
+			//printf ("FUCk\n");
 			break;
 		default:
 			printf("Not a locktype\n");
 			pthread_exit(NULL);
 	}
 
-	StopWatch_t tw;
 		
-	startTimer(&tw);
-	stopTimer(&tw);
 	while(privcount < mycount){
-		lockfunc(lockarg);
+		//lockfunc(lockarg);
 		count++;
-		unlockfunc(lockarg);
+		//unlockfunc(lockarg);
+		//printf("fuck\n");
 		privcount++;
-		stopTimer(&tw);
 	}
 	
 
 	printf("Thread %d counted %d times\n",arg->tid, privcount);
 	if (lockt == 4)
 		free(lockarg->mynode);
-	free(args);
+	free(lockarg);
 	pthread_exit(NULL);
 
 	/* TO DO: REPLACE SWITCH WITH FUNCTION POINTER */

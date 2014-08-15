@@ -292,7 +292,7 @@ int main(int argc, char **argv){
 			rc = pthread_create(&threads[i], &attr, parallelcounter, (void *) &args[i]);
 			if (rc) {
 			  printf("ERROR; return code from pthread_create() is %d\n", rc);
-			  exit(-1);
+			  exit(0);
 			}
 		}
 		pthread_attr_destroy(&attr);
@@ -302,7 +302,7 @@ int main(int argc, char **argv){
 			sumprivcounts += (int) status;
 		  	if (rc) {
 		    printf("ERROR; return code from pthread_join() is %d\n", rc);
-		    exit(-1);
+		    exit(0);
 		  	}	
 			printf("thread %d joined\n",i);
 		}
